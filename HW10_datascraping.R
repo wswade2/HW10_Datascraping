@@ -13,16 +13,7 @@ library(rvest)
 library(tidyverse)
 library(purrr)
 
-all_recipes <- read_html("http://allrecipes.com/search/results/?wt=dessert&sort=re&page=2")
-all_recipes
-
-description <- all_recipes %>% 
-	html_nodes(".rec-card__description") %>% 
-	html_text()
-description
-
-
-# New goal- scrape fragrantica
+# Goal- scrape fragrantica
 
 frag <- read_html("https://www.fragrantica.com/perfume/Chanel/Antaeus-616.html")
 frag
@@ -55,10 +46,6 @@ description <- frag %>%
 	html_node("#col1 div:nth-child(7) p") %>%
 	html_text()
 description
-
-
-	
-data.frame(name, scent, description)	
 
 View(data.frame(name, brand, scent, rating, description))
 
@@ -107,32 +94,6 @@ View(URL_DF)
 
 ### Creating the function
 
-# first, we need to make a dynamic URL
-
-frag_dyn <- read_html("https://www.fragrantica.com%d")
-
-# map_df(function) {
-# 	name <- read_html(sprintf(frag_dyn,))
-# }
-
-
-# let's make a dataframe of all the URLS on the Chanel page
-
-#not sure what I'm doing here. I was planning on using a function to get the URLs
-# for each page I wanted to scrape
-# and then creating a second function that actually scrapes each page.
-get_URL <- function(chanel) {
-	chanel %>%
-		#glue("https://www.fragrantica.com",.) %>%
-		read_html() %>%
-		html_node(".plist a") %>%
-		html_attr('href') %>%
-		return()
-}
-get_URL
-
-
-
 ## Logic:
 # function 1 creates a dataframe of complete urls.
 # It will be of the form: col1 = 1,2,3; col2 = url1, url2, url3
@@ -143,36 +104,34 @@ get_URL
 # You can call the URLS from function 1 using the format DF1 (i, 2), which tells R to select
 # the element located in row i, column 2.
 
-for (i in URL_DF) {
-	data.frame(name = html_node(URL_DF[i],"h1 span") %>%
+for (i in 1:length(URL_DF)) {
+	 #i <- 2
+	pagehtml <- read_html(URL_DF[i])
+	output_data <- data.frame(name = html_node(pagehtml,"h1 span") %>%
 						 	html_text(),
-						 brand = html_node(URL_DF[i],"span a span") %>%
+						 brand = html_node(pagehtml,"span a span") %>%
 						 	html_text(),
-						 scent = html_node(URL_DF[i],"#prettyPhotoGallery div div:nth-child(2) span") %>%
+						 scent = html_node(pagehtml,"#prettyPhotoGallery div div:nth-child(2) span") %>%
 						 	html_text(),
-						 rating = html_node(URL_DF[i],"#col1 div+ div p span:nth-child(1)") %>%
+						 rating = html_node(pagehtml,"#col1 div+ div p span:nth-child(1)") %>%
 						 	html_text(),
-						 description = html_node(URL_DF[i],"#col1 div:nth-child(7) p") %>%
-						 	html_text(),
-						 return())
+						 description = html_node(pagehtml,"#col1 div:nth-child(7) p") %>%
+						 	html_text()
+						 )
 }
 
-# frag_scrape <- map_df(1:103,function(i) {
-# 	data.frame(name = html_node(URL_DF[i],"h1 span") %>%
-# 						 	html_text(),
-# 						 brand = html_node(URL_DF[i],"span a span") %>%
-# 						 	html_text(),
-# 						 scent = html_node(URL_DF[i],"#prettyPhotoGallery div div:nth-child(2) span") %>%
-# 						 	html_text(),
-# 						 rating = html_node(URL_DF[i],"#col1 div+ div p span:nth-child(1)") %>%
-# 						 	html_text(),
-# 						 description = html_node(URL_DF[i],"#col1 div:nth-child(7) p") %>%
-# 						 	html_text(),
-# 						 return())
-# })
-# 
-# frag_scrape
+URL_DF <- as_data_frame(URL_DF)
+names(URL_DF) <- "Link"
 
+DF_PARF <- URL_DF %>%
+	mutate(raw_page = map(Link,read_html),
+		name = map(raw_page, ~ .x %>% html_node("h1 span") %>% html_text()),
+				 brand = map(raw_page, ~ .x %>% html_node("span a span") %>% html_text()),
+		scent = map(raw_page, ~ .x %>% html_node("#prettyPhotoGallery div div:nth-child(2) span") %>% html_text()),
+		rating = map(raw_page, ~ .x %>% html_node("#col1 div+ div p span:nth-child(1)") %>% html_text()),
+		description = map(raw_page, ~ .x %>% html_node("#col1 div:nth-child(7) p") %>% html_text())
+		)
 
-temp_url <- URL_DF[1]
-temp_url
+View(DF_PARF)
+
+glimpse(DF_PARF)

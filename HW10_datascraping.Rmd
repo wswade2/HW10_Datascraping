@@ -1,0 +1,163 @@
+---
+title: "Datascraping"
+author: "Wade"
+date: "December 7, 2017"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+Goal: For this assignment I have decided to scrape data from a perfume/cologne database, fragrantica.com. On this website, users are able to review and rate perfumes as well as provide information about their scents. While I am not a perfume/cologne enthusiast, I think there will be a value to studying this database in the future because I am interested in how sensory products are marketed to consumers. For this assignment, I will narrow the dataset of interest to the products offered by a single brand, Chanel.
+
+First, I'll load required packages:
+
+```{r}
+library(rvest)
+library(tidyverse)
+library(purrr)
+```
+
+Next, I want to test my ability to pull information from a single webpage. Note that I used SelectorGadget, a Chrome extension, in order to pull the necessary tag from the webpage code.
+
+```{r}
+frag <- read_html("https://www.fragrantica.com/perfume/Chanel/Antaeus-616.html")
+frag
+
+name <- frag %>%
+	html_node("h1 span") %>%
+	html_text()
+name
+
+scent <- frag %>% 
+		#html_nodes("#prettyPhotoGallery div div+ div span") %>% 
+		html_node("#prettyPhotoGallery div div:nth-child(2) span") %>%
+		html_text()
+	scent
+		
+rating <- frag %>% 
+	html_node("#col1 div+ div p span:nth-child(1)") %>%
+	html_text()
+rating
+		
+brand <- frag %>% 
+	html_node("span a span") %>%
+	html_text()
+brand
+
+description <- frag %>%
+	html_node("#col1 div:nth-child(7) p") %>%
+	html_text()
+description
+
+print(data.frame(name, brand, scent, rating, description))
+```
+
+This looks good! I have what I need to pull data from a single webpage on Fragrantica.com.
+
+Now for the hard part: I've got to automate the process. Unfortunately, the URL for each individual perfume/cologne follows a random patter. It's not like I can just paste 1,2,3, etc. at the end of the URL. My plan is to create a list of URLs that I want to scrape data from. I can then reference this list of URLs in my scraping function.
+
+```{r}
+library(urltools)
+```
+
+urltools is a neat package I found that allows you to parse parts of a URL. 
+
+```{r}
+parsed <- url_parse("https://www.fragrantica.com/perfume/Chanel/Antaeus-616.html")
+parsed
+
+parsed$path
+```
+
+This is the path that we need to view the Antaeus cologne by Chanel. We've got to find a way to pull a similar path from each of the Chanel links available, and then we can pipe these paths into a function.
+
+```{r}
+chanel_page <- read_html("https://www.fragrantica.com/designers/Chanel.html")
+chanel_page
+
+parse_test <- chanel_page %>%
+	html_nodes(".plist a") %>%
+	html_attr('href')
+parse_test
+```
+
+This returns the latter part of the URLs which can later be appended to the base URL. Each of these parsed URL tails correspond to a unique cologne or perfume webpage.
+
+```{r}
+base_URL <- rep('https://www.fragrantica.com', length(parse_test))
+```
+
+Here I have created a list that simply consists of the base URL repeated several times, according to the number of rows in my list of parsed URL tails.
+
+```{r}
+URL_DF <- paste(base_URL,parse_test)
+head(URL_DF)
+```
+
+I have now created a dataframe of URLs. Unfortunately, the pasting has left a space right in the middle of each URL.
+
+```{r}
+URL_DF <- gsub(" ","", URL_DF, fixed = TRUE)
+```
+
+This appears to have fixed the issue. I have successfully created a dataframe of URLs to use for scraping. Now we just have to reference these URLs in a datascraping function.
+
+Despite the name, URL_DF is actually a list. We'll need to fix that in order to properly apply a function to it. 
+
+```{r}
+URL_DF <- as_data_frame(URL_DF)
+names(URL_DF) <- "Link"
+```
+
+And here's the actual function. It looks simple, but took quite a bit of effort and troubleshooting!
+
+```{r}
+DF_PARF <- URL_DF %>%
+	mutate(raw_page = map(Link,read_html),
+		name = map(raw_page, ~ .x %>% html_node("h1 span") %>% html_text()),
+				 brand = map(raw_page, ~ .x %>% html_node("span a span") %>% html_text()),
+		scent = map(raw_page, ~ .x %>% html_node("#prettyPhotoGallery div div:nth-child(2) span") %>% html_text()),
+		rating = map(raw_page, ~ .x %>% html_node("#col1 div+ div p span:nth-child(1)") %>% html_text()),
+		description = map(raw_page, ~ .x %>% html_node("#col1 div:nth-child(7) p") %>% html_text())
+		)
+```
+
+And here we have it, our scraped data:
+
+```{r}
+glimpse(DF_PARF)
+```
+
+```{r include=FALSE}
+is.na(DF_PARF) <- DF_PARF==" "
+is.numeric(DF_PARF$rating)
+DF_PARF$rating <- as.numeric(DF_PARF$rating)
+mean(DF_PARF$rating, na.rm = TRUE)
+```
+
+
+```{r include=FALSE}
+ggplot(DF_PARF, aes(x="scent", y="rating")) +
+	geom_boxplot()
+```
+
+```{r include=FALSE}
+ggplot(data=subset(DF_PARF, !is.na(rating)), aes(x="scent", y="rating"))+
+			 	geom_point()
+```
+
+<h3>Process:</h3>
+
+I used several websites to help me out with this project:
+<a href=https://www.youtube.com/watch?v=4IYfYx4yoAI>https://www.youtube.com/watch?v=4IYfYx4yoAI</a>
+<a href=https://www.youtube.com/watch?v=MFQTHrCiAxA>https://www.youtube.com/watch?v=MFQTHrCiAxA</a>
+<a href=https://www.youtube.com/watch?v=82s8KdZt5v8>https://www.youtube.com/watch?v=82s8KdZt5v8</a>
+<a href=https://cran.r-project.org/web/packages/urltools/vignettes/urltools.html>https://cran.r-project.org/web/packages/urltools/vignettes/urltools.html</a>
+
+I also got help from the TA's, especially for the actual function that scrapes the data. There are a lot of nuances that go into datascraping functions. All in all, this was one of my preferred assignment because I got to choose which data to scrape and it's such a potentially useful skill to learn.
+
+
+
+
+
+
